@@ -4,7 +4,7 @@ from consumer import consume_traffic_data
 
 @task
 def generate_work_items():
-    return produce_traffic_data(save_to_file=False)  # Returns list of work items (JSON)
+    return produce_traffic_data()  # Returns list of work items (JSON)
 
 @task
 def process_work_items(work_items):
