@@ -1,30 +1,32 @@
+from prefect import get_run_logger
 import requests
 from typing import List, Dict
 
 SALES_SYSTEM_URL = "https://robocorp.com/inhuman-insurance-inc/sales-system-api"
 
-def is_valid_traffic_data(data: dict) -> bool:
+RED = "\033[91m"
+YELLOW = "\033[93m"
+RESET = "\033[0m"
+
+def is_valid(data: dict) -> bool:
     return isinstance(data.get("country"), str) and len(data["country"]) == 3
 
-def post_traffic_data(traffic_data: dict) -> (int, dict):
-    try:
-        response = requests.post(SALES_SYSTEM_URL, json=traffic_data)
-        return response.status_code, response.json()
-    except requests.RequestException as e:
-        return 0, {"message": str(e)}
-
 def consume_traffic_data(work_items: List[Dict]):
+    logger = get_run_logger()
+
     for item in work_items:
         traffic_data = item.get("payload", {}).get("traffic_data", {})
-        
-        if is_valid_traffic_data(traffic_data):
-            status, response = post_traffic_data(traffic_data)
+        if not is_valid(traffic_data):
+            logger.error(
+                f"{RED}BUSINESS ERROR: INVALID_TRAFFIC_DATA{RESET} - Payload: {item.get('payload')}"
+            )
+            continue
 
-            if status != 200:
-                # Retry once
-                status, response = post_traffic_data(traffic_data)
-
-                if status != 200:
-                    print("APPLICATION ERROR,", "TRAFFIC_DATA_POST_FAILED,", response.get("message"), traffic_data)
+        for attempt in range(2):  # try once + retry
+            response = requests.post(SALES_SYSTEM_URL, json=traffic_data)
+            if response.status_code == 200:
+                break
         else:
-            print("BUSINESS ERROR,", "INVALID_TRAFFIC_DATA,", item.get("payload", {}))
+            logger.warning(
+                f"{YELLOW}APPLICATION ERROR: TRAFFIC_DATA_POST_FAILED{RESET} - Message: {response.json().get('message')} - Data: {traffic_data}"
+            )
